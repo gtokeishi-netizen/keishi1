@@ -702,3 +702,130 @@ add_action('save_post', function($post_id) {
 // タームの更新時にもキャッシュクリア
 add_action('edited_term', 'gi_clear_all_caches');
 add_action('created_term', 'gi_clear_all_caches');
+
+/**
+ * =============================================================================
+ * 6. Prefecture Counting Functions (Enhanced)
+ * =============================================================================
+ */
+
+/**
+ * 都道府県の投稿数を取得（高速版）
+ */
+function gi_get_prefecture_counts($force_refresh = false) {
+    $cache_key = 'gi_prefecture_counts_v2';
+    
+    if ($force_refresh) {
+        delete_transient($cache_key);
+    }
+    
+    $prefecture_counts = get_transient($cache_key);
+    
+    if (false === $prefecture_counts) {
+        global $wpdb;
+        
+        // 直接データベースクエリで高速取得
+        $count_results = $wpdb->get_results("
+            SELECT t.slug, COUNT(DISTINCT p.ID) as post_count
+            FROM {$wpdb->terms} t
+            LEFT JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+            LEFT JOIN {$wpdb->term_relationships} tr ON tt.term_taxonomy_id = tr.term_taxonomy_id
+            LEFT JOIN {$wpdb->posts} p ON tr.object_id = p.ID 
+                AND p.post_type = 'grant' 
+                AND p.post_status = 'publish'
+            WHERE tt.taxonomy = 'grant_prefecture'
+            GROUP BY t.term_id, t.slug
+            ORDER BY t.slug
+        ");
+        
+        $prefecture_counts = array();
+        foreach ($count_results as $result) {
+            $prefecture_counts[$result->slug] = intval($result->post_count);
+        }
+        
+        // 全都道府県について0埋め
+        if (function_exists('gi_get_all_prefectures')) {
+            $all_prefectures = gi_get_all_prefectures();
+            foreach ($all_prefectures as $pref) {
+                if (!isset($prefecture_counts[$pref['slug']])) {
+                    $prefecture_counts[$pref['slug']] = 0;
+                }
+            }
+        }
+        
+        // 10分キャッシュ
+        set_transient($cache_key, $prefecture_counts, 10 * MINUTE_IN_SECONDS);
+    }
+    
+    return $prefecture_counts;
+}
+
+/**
+ * 都道府県タクソノミーの初期化チェック
+ */
+function gi_ensure_prefecture_terms() {
+    if (!function_exists('gi_get_all_prefectures')) {
+        return false;
+    }
+    
+    $all_prefectures = gi_get_all_prefectures();
+    $missing_terms = array();
+    
+    foreach ($all_prefectures as $pref) {
+        $term = get_term_by('slug', $pref['slug'], 'grant_prefecture');
+        if (!$term || is_wp_error($term)) {
+            $missing_terms[] = $pref;
+        }
+    }
+    
+    // 欠けているタームを作成
+    foreach ($missing_terms as $pref) {
+        $result = wp_insert_term(
+            $pref['name'],
+            'grant_prefecture',
+            array('slug' => $pref['slug'])
+        );
+        
+        if (is_wp_error($result)) {
+            error_log('Failed to create prefecture term: ' . $pref['name'] . ' - ' . $result->get_error_message());
+        }
+    }
+    
+    return count($missing_terms);
+}
+
+/**
+ * 助成金投稿の都道府県設定チェック
+ */
+function gi_check_grant_prefecture_assignments() {
+    global $wpdb;
+    
+    // 都道府県が設定されていない助成金投稿数を取得
+    $unassigned_count = $wpdb->get_var("
+        SELECT COUNT(p.ID)
+        FROM {$wpdb->posts} p
+        LEFT JOIN {$wpdb->term_relationships} tr ON p.ID = tr.object_id
+        LEFT JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+            AND tt.taxonomy = 'grant_prefecture'
+        WHERE p.post_type = 'grant'
+        AND p.post_status = 'publish'
+        AND tt.term_taxonomy_id IS NULL
+    ");
+    
+    $total_grants = wp_count_posts('grant')->publish;
+    
+    return array(
+        'total_grants' => intval($total_grants),
+        'unassigned_grants' => intval($unassigned_count),
+        'assigned_grants' => intval($total_grants) - intval($unassigned_count),
+        'assignment_ratio' => $total_grants > 0 ? round((intval($total_grants) - intval($unassigned_count)) / intval($total_grants) * 100, 1) : 0
+    );
+}
+
+// 都道府県カウントのキャッシュクリアを追加
+add_action('save_post', function($post_id) {
+    if (get_post_type($post_id) === 'grant') {
+        delete_transient('gi_prefecture_counts_v2');
+        gi_clear_all_caches();
+    }
+});

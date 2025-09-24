@@ -48,6 +48,9 @@ function gi_admin_init() {
     
     // 投稿一覧カラム追加
     add_filter('manage_grant_posts_columns', 'gi_add_grant_columns');
+    
+    // Prefecture Debug機能追加
+    gi_add_prefecture_debug_menu();
     add_action('manage_grant_posts_custom_column', 'gi_grant_column_content', 10, 2);
 }
 add_action('admin_init', 'gi_admin_init');
@@ -216,6 +219,151 @@ function gi_add_admin_menu() {
     );
 }
 add_action('admin_menu', 'gi_add_admin_menu');
+
+/**
+ * Prefecture Debug Menu
+ */
+function gi_add_prefecture_debug_menu() {
+    add_submenu_page(
+        'edit.php?post_type=grant',
+        '都道府県デバッグ',
+        '都道府県デバッグ',
+        'manage_options',
+        'gi-prefecture-debug',
+        'gi_prefecture_debug_page'
+    );
+}
+
+/**
+ * Prefecture Debug Page
+ */
+function gi_prefecture_debug_page() {
+    if (!current_user_can('manage_options')) {
+        wp_die('権限がありません。');
+    }
+    
+    // Actions
+    if (isset($_POST['action'])) {
+        if ($_POST['action'] === 'refresh_counts' && wp_verify_nonce($_POST['_wpnonce'], 'gi_prefecture_debug')) {
+            delete_transient('gi_prefecture_counts_v2');
+            echo '<div class="notice notice-success"><p>カウンターキャッシュをクリアしました。</p></div>';
+        }
+        
+        if ($_POST['action'] === 'ensure_terms' && wp_verify_nonce($_POST['_wpnonce'], 'gi_prefecture_debug')) {
+            $missing_count = gi_ensure_prefecture_terms();
+            if ($missing_count > 0) {
+                echo "<div class='notice notice-success'><p>{$missing_count}個の都道府県タームを作成しました。</p></div>";
+            } else {
+                echo '<div class="notice notice-info"><p>すべての都道府県タームが存在します。</p></div>';
+            }
+        }
+    }
+    
+    // Get data
+    $prefecture_counts = gi_get_prefecture_counts();
+    $assignment_stats = gi_check_grant_prefecture_assignments();
+    
+    ?>
+    <div class="wrap">
+        <h1>🗾 都道府県デバッグツール</h1>
+        
+        <div class="gi-admin-notice">
+            <h3>📊 統計情報</h3>
+            <p><strong>総助成金投稿:</strong> <?php echo $assignment_stats['total_grants']; ?>件</p>
+            <p><strong>都道府県設定済み:</strong> <?php echo $assignment_stats['assigned_grants']; ?>件 (<?php echo $assignment_stats['assignment_ratio']; ?>%)</p>
+            <p><strong>都道府県未設定:</strong> <?php echo $assignment_stats['unassigned_grants']; ?>件</p>
+        </div>
+        
+        <div class="postbox">
+            <h2 class="hndle">🔧 管理ツール</h2>
+            <div class="inside">
+                <form method="post" style="display:inline-block;margin-right:10px;">
+                    <?php wp_nonce_field('gi_prefecture_debug'); ?>
+                    <input type="hidden" name="action" value="refresh_counts">
+                    <input type="submit" class="button button-primary" value="🔄 カウンターを再計算">
+                </form>
+                
+                <form method="post" style="display:inline-block;">
+                    <?php wp_nonce_field('gi_prefecture_debug'); ?>
+                    <input type="hidden" name="action" value="ensure_terms">
+                    <input type="submit" class="button button-secondary" value="🏷️ 都道府県タームを確認・作成">
+                </form>
+            </div>
+        </div>
+        
+        <?php if ($assignment_stats['assigned_grants'] > 0) : ?>
+        <div class="postbox">
+            <h2 class="hndle">📍 都道府県別投稿数</h2>
+            <div class="inside">
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th style="width:150px;">都道府県</th>
+                            <th style="width:100px;">投稿数</th>
+                            <th style="width:100px;">地域</th>
+                            <th>アクション</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $all_prefectures = gi_get_all_prefectures();
+                        foreach ($all_prefectures as $pref) :
+                            $count = isset($prefecture_counts[$pref['slug']]) ? $prefecture_counts[$pref['slug']] : 0;
+                            if ($count > 0) :
+                        ?>
+                        <tr>
+                            <td><strong><?php echo esc_html($pref['name']); ?></strong></td>
+                            <td>
+                                <span class="badge" style="background:#007cba;color:white;padding:2px 6px;border-radius:3px;font-size:12px;">
+                                    <?php echo $count; ?>
+                                </span>
+                            </td>
+                            <td><?php echo esc_html(ucfirst($pref['region'])); ?></td>
+                            <td>
+                                <?php
+                                $prefecture_url = add_query_arg(
+                                    array(
+                                        'post_type' => 'grant',
+                                        'grant_prefecture' => $pref['slug']
+                                    ),
+                                    admin_url('edit.php')
+                                );
+                                ?>
+                                <a href="<?php echo esc_url($prefecture_url); ?>" class="button button-small">投稿を表示</a>
+                            </td>
+                        </tr>
+                        <?php 
+                            endif;
+                        endforeach; 
+                        ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php else : ?>
+        <div class="notice notice-warning">
+            <h3>⚠️ 都道府県設定が必要です</h3>
+            <p>助成金投稿に都道府県が設定されていません。以下の方法で設定してください：</p>
+            <ol>
+                <li><strong>手動設定:</strong> <a href="<?php echo admin_url('edit.php?post_type=grant'); ?>">助成金投稿一覧</a> で各投稿を編集し、都道府県を選択</li>
+                <li><strong>一括編集:</strong> 投稿一覧で複数選択して一括編集機能を使用</li>
+                <li><strong>インポート修正:</strong> インポート機能を使用している場合は、都道府県マッピングを確認</li>
+            </ol>
+        </div>
+        <?php endif; ?>
+        
+        <div class="postbox">
+            <h2 class="hndle">🔍 デバッグ情報</h2>
+            <div class="inside">
+                <p><strong>キャッシュ状態:</strong> <?php echo get_transient('gi_prefecture_counts_v2') !== false ? '有効' : '無効'; ?></p>
+                <p><strong>都道府県タクソノミー:</strong> <?php echo taxonomy_exists('grant_prefecture') ? '存在' : '不存在'; ?></p>
+                <p><strong>grant投稿タイプ:</strong> <?php echo post_type_exists('grant') ? '存在' : '不存在'; ?></p>
+                <p><strong>Debug Mode:</strong> <?php echo defined('WP_DEBUG') && WP_DEBUG ? 'ON' : 'OFF'; ?></p>
+            </div>
+        </div>
+    </div>
+    <?php
+}
 
 /**
  * 都道府県データ初期化ページの表示内容

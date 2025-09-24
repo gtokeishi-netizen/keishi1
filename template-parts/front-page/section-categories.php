@@ -255,6 +255,45 @@ if (function_exists('gi_get_cached_stats')) {
                 </p>
             </div>
 
+            <!-- デバッグ情報パネル（管理者のみ） -->
+            <?php if (current_user_can('manage_options') && (isset($_GET['debug_counts']) || defined('WP_DEBUG') && WP_DEBUG)) : ?>
+            <div class="debug-panel" style="background:#f0f0f0;border:1px solid #ccc;padding:15px;margin:20px 0;border-radius:8px;">
+                <h4 style="margin-top:0;">🔧 Prefecture Counts Debug Info (管理者のみ)</h4>
+                <?php
+                $total_grants = wp_count_posts('grant')->publish;
+                $cache_status = get_transient('gi_prefecture_counts_v2') !== false ? 'キャッシュ有り' : 'キャッシュ無し';
+                $prefectures_with_posts = count(array_filter($prefecture_counts));
+                ?>
+                <p><strong>総助成金投稿数:</strong> <?php echo $total_grants; ?></p>
+                <p><strong>キャッシュ状態:</strong> <?php echo $cache_status; ?></p>
+                <p><strong>投稿のある都道府県数:</strong> <?php echo $prefectures_with_posts; ?> / <?php echo count($all_prefectures); ?></p>
+                <p>
+                    <a href="<?php echo add_query_arg('refresh_counts', '1'); ?>" style="background:#007cba;color:white;padding:5px 10px;text-decoration:none;border-radius:3px;">
+                        🔄 カウンターを強制更新
+                    </a>
+                    <a href="<?php echo remove_query_arg(array('debug_counts', 'refresh_counts')); ?>" style="background:#666;color:white;padding:5px 10px;text-decoration:none;border-radius:3px;margin-left:10px;">
+                        ❌ デバッグを閉じる
+                    </a>
+                </p>
+                <?php if ($prefectures_with_posts > 0) : ?>
+                <details style="margin-top:10px;">
+                    <summary style="cursor:pointer;font-weight:bold;">投稿のある都道府県一覧</summary>
+                    <div style="margin-top:10px;max-height:200px;overflow-y:auto;">
+                        <?php foreach ($prefecture_counts as $slug => $count) : if ($count > 0) : ?>
+                            <span style="display:inline-block;background:#e1f5fe;padding:3px 8px;margin:2px;border-radius:3px;font-size:12px;">
+                                <?php
+                                $pref_data = array_filter($all_prefectures, function($p) use ($slug) { return $p['slug'] === $slug; });
+                                $pref_name = !empty($pref_data) ? array_values($pref_data)[0]['name'] : $slug;
+                                echo $pref_name . ': ' . $count;
+                                ?>
+                            </span>
+                        <?php endif; endforeach; ?>
+                    </div>
+                </details>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
             <div class="regions-container">
                 <!-- 左側：47都道府県リスト -->
                 <div class="all-prefectures-container">
@@ -323,43 +362,117 @@ if (function_exists('gi_get_cached_stats')) {
                             );
                         }
                         
-                        // 都道府県別の投稿数をキャッシュから取得または計算
-                        $prefecture_counts = get_transient('gi_prefecture_counts');
-                        if (false === $prefecture_counts) {
+                        // 都道府県別の投稿数を取得（改善版 - デバッグ機能付き）
+                        $prefecture_counts = get_transient('gi_prefecture_counts_v2');
+                        $debug_mode = defined('WP_DEBUG') && WP_DEBUG;
+                        
+                        if (false === $prefecture_counts || (isset($_GET['refresh_counts']) && current_user_can('manage_options'))) {
                             $prefecture_counts = array();
                             
-                            // 高速化: WP_Queryを使って各タームの投稿数を直接取得
-                            foreach ($all_prefectures as $pref) {
-                                $count = 0;
-                                $term = get_term_by('slug', $pref['slug'], 'grant_prefecture');
-                                if ($term && !is_wp_error($term)) {
-                                    // WP_Queryで該当する公開済み投稿数を取得
-                                    $query = new WP_Query(array(
-                                        'post_type' => 'grant',
-                                        'post_status' => 'publish',
-                                        'posts_per_page' => 1, // 件数のみ必要なので1件で十分
-                                        'fields' => 'ids',
-                                        'no_found_rows' => false, // found_postsを取得するため
-                                        'tax_query' => array(
-                                            array(
-                                                'taxonomy' => 'grant_prefecture',
-                                                'field' => 'term_id',
-                                                'terms' => $term->term_id
-                                            )
-                                        )
-                                    ));
-                                    $count = $query->found_posts;
-                                    wp_reset_postdata();
-                                }
-                                $prefecture_counts[$pref['slug']] = $count;
+                            // デバッグ情報
+                            if ($debug_mode) {
+                                error_log('Prefecture Counts: Starting calculation...');
                             }
                             
-                            // 15分間キャッシュ
-                            set_transient('gi_prefecture_counts', $prefecture_counts, 15 * MINUTE_IN_SECONDS);
+                            // 方法1: 直接データベースクエリで一括取得（最高速）
+                            global $wpdb;
+                            $count_results = $wpdb->get_results("
+                                SELECT t.slug, COUNT(DISTINCT p.ID) as post_count
+                                FROM {$wpdb->terms} t
+                                LEFT JOIN {$wpdb->term_taxonomy} tt ON t.term_id = tt.term_id
+                                LEFT JOIN {$wpdb->term_relationships} tr ON tt.term_taxonomy_id = tr.term_taxonomy_id
+                                LEFT JOIN {$wpdb->posts} p ON tr.object_id = p.ID 
+                                    AND p.post_type = 'grant' 
+                                    AND p.post_status = 'publish'
+                                WHERE tt.taxonomy = 'grant_prefecture'
+                                GROUP BY t.term_id, t.slug
+                                ORDER BY t.slug
+                            ");
+                            
+                            // 結果をマップに変換
+                            $db_counts = array();
+                            foreach ($count_results as $result) {
+                                $db_counts[$result->slug] = intval($result->post_count);
+                            }
+                            
+                            // 方法2: すべての都道府県について結果を確保（存在しない場合は0）
+                            foreach ($all_prefectures as $pref) {
+                                if (isset($db_counts[$pref['slug']])) {
+                                    $prefecture_counts[$pref['slug']] = $db_counts[$pref['slug']];
+                                } else {
+                                    // タームが存在しない場合は0
+                                    $prefecture_counts[$pref['slug']] = 0;
+                                    
+                                    // デバッグ: タームの存在確認
+                                    if ($debug_mode) {
+                                        $term = get_term_by('slug', $pref['slug'], 'grant_prefecture');
+                                        if (!$term || is_wp_error($term)) {
+                                            error_log("Prefecture Counts: Term not found for slug '{$pref['slug']}' - {$pref['name']}");
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // デバッグ情報
+                            if ($debug_mode) {
+                                $total_prefectures = count($all_prefectures);
+                                $prefectures_with_posts = count(array_filter($prefecture_counts));
+                                error_log("Prefecture Counts: {$total_prefectures} prefectures processed, {$prefectures_with_posts} have posts");
+                            }
+                            
+                            // 方法3: フォールバック - WP_Queryで個別カウント（デバッグ用）
+                            if ($debug_mode && empty(array_filter($prefecture_counts))) {
+                                error_log('Prefecture Counts: No counts found via DB query, trying WP_Query fallback...');
+                                
+                                foreach ($all_prefectures as $pref) {
+                                    $term = get_term_by('slug', $pref['slug'], 'grant_prefecture');
+                                    if ($term && !is_wp_error($term)) {
+                                        // より詳細なクエリパラメータ
+                                        $args = array(
+                                            'post_type' => 'grant',
+                                            'post_status' => 'publish',
+                                            'posts_per_page' => -1,
+                                            'fields' => 'ids',
+                                            'meta_query' => array(),
+                                            'tax_query' => array(
+                                                array(
+                                                    'taxonomy' => 'grant_prefecture',
+                                                    'field' => 'slug',
+                                                    'terms' => $pref['slug'],
+                                                    'operator' => 'IN'
+                                                )
+                                            )
+                                        );
+                                        
+                                        $query = new WP_Query($args);
+                                        $fallback_count = $query->found_posts;
+                                        wp_reset_postdata();
+                                        
+                                        if ($fallback_count > 0) {
+                                            $prefecture_counts[$pref['slug']] = $fallback_count;
+                                            error_log("Prefecture Counts: Found {$fallback_count} posts for {$pref['name']} via WP_Query");
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 10分間キャッシュ（短縮してテスト用）
+                            set_transient('gi_prefecture_counts_v2', $prefecture_counts, 10 * MINUTE_IN_SECONDS);
+                            
+                            // デバッグ: 最終結果
+                            if ($debug_mode) {
+                                $sample_results = array_slice($prefecture_counts, 0, 5, true);
+                                error_log('Prefecture Counts: Sample results - ' . print_r($sample_results, true));
+                            }
                         }
                         
                         foreach ($all_prefectures as $pref) :
                             $count = isset($prefecture_counts[$pref['slug']]) ? $prefecture_counts[$pref['slug']] : 0;
+                            
+                            // デバッグ表示 (管理者のみ)
+                            if ($debug_mode && current_user_can('manage_options') && $count > 0) {
+                                error_log("Prefecture Display: {$pref['name']} ({$pref['slug']}) - {$count} posts");
+                            }
                             
                             // フィルター付きURLを生成（パラメータ名を修正）
                             $prefecture_url = add_query_arg(
