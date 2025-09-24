@@ -1177,6 +1177,12 @@ $all_prefectures = get_terms([
         }
     }
     
+    /* ===== BOTTOM NAVIGATION HIDE ===== */
+    .gi-bottom-nav,
+    .floating-nav {
+        display: none !important;
+    }
+    
     /* ===== FILTER COUNT INDICATOR ===== */
     .clean-filter-count {
         background: var(--primary);
