@@ -27,12 +27,13 @@ if (!defined('GI_THEME_PREFIX')) {
 // 機能ファイルの読み込み
 $inc_dir = get_template_directory() . '/inc/';
 
-// 整理されたファイル構成（10ファイル → 8ファイル、リネーム済み）
+// 整理されたファイル構成（10ファイル → 9ファイル、Enhanced AI Generator追加）
 $required_files = array(
     'theme-foundation.php',     // テーマ設定、投稿タイプ、タクソノミー統合（旧：core-setup.php）
     'card-rendering.php',       // カードレンダリング、テンプレート、モバイル最適化統合（旧：display-functions.php）
     'data-processing.php',      // ヘルパー関数、パフォーマンス最適化統合（旧：data-functions.php）
     'search-integration.php',   // AI機能・検索履歴統合（旧：ai-functions.php）
+    'enhanced-ai-generator.php', // 高度なAI生成機能（新規追加）
     'ajax-handlers.php',        // AJAX処理（旧：3-ajax-functions.php）
     'admin-customization.php',  // 管理画面機能（旧：6-admin-functions.php）
     'fields-configuration.php', // ACF設定とフィールド定義統合（旧：acf-setup.php）
