@@ -389,7 +389,7 @@ if (function_exists('gi_get_cached_stats')) {
                         <h5 class="map-title">🗾 地域を選択して絞り込み</h5>
                         
                         <!-- インタラクティブSVG日本地図 -->
-                        <svg viewBox="0 0 600 700" class="japan-map-svg" xmlns="http://www.w3.org/2000/svg">
+                        <svg viewBox="0 0 600 750" class="japan-map-svg" xmlns="http://www.w3.org/2000/svg">
                             <defs>
                                 <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                                     <stop offset="0%" style="stop-color:#f8f9fa" />
@@ -400,7 +400,7 @@ if (function_exists('gi_get_cached_stats')) {
                                 </filter>
                             </defs>
                             
-                            <rect width="600" height="700" fill="url(#bgGrad)" rx="16"/>
+                            <rect width="600" height="750" fill="url(#bgGrad)" rx="16"/>
                             
                             <g class="map-regions">
                                 <!-- 北海道 -->
@@ -475,9 +475,9 @@ if (function_exists('gi_get_cached_stats')) {
                                     <text x="77" y="580" text-anchor="middle" class="region-count">0件</text>
                                     
                                     <!-- 沖縄 -->
-                                    <circle cx="60" cy="650" r="20" class="map-region" data-region="kyushu"
+                                    <circle cx="60" cy="680" r="25" class="map-region" data-region="kyushu"
                                             fill="#ffffff" stroke="#333" stroke-width="2" filter="url(#shadow)"/>
-                                    <text x="60" y="655" text-anchor="middle" class="region-label" font-size="10">沖縄</text>
+                                    <text x="60" y="686" text-anchor="middle" class="region-label" font-size="12">沖縄</text>
                                 </g>
                             </g>
                         </svg>
@@ -1241,9 +1241,10 @@ a.recent-grant-item:hover {
 .japan-map-svg {
     width: 100%;
     height: auto;
-    max-height: 450px;
+    max-height: 500px;
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    aspect-ratio: 600 / 750;
 }
 
 .map-region {
@@ -1489,6 +1490,40 @@ a.recent-grant-item:hover {
     transform: translateY(0);
 }
 
+/* 非常に小さなモバイルデバイス対応 */
+@media (max-width: 480px) {
+    .japan-map-svg {
+        max-height: 300px;
+        min-height: 250px;
+    }
+    
+    .region-label {
+        font-size: 10px !important;
+    }
+    
+    .region-count {
+        font-size: 8px !important;
+    }
+    
+    .region-buttons {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+    
+    .region-button {
+        padding: 10px 6px;
+        min-height: 50px;
+    }
+    
+    .region-button .region-name {
+        font-size: 11px;
+    }
+    
+    .region-button .region-count {
+        font-size: 9px;
+    }
+}
+
 /* レスポンシブ */
 @media (max-width: 1024px) {
     .main-categories-grid {
@@ -1628,6 +1663,91 @@ a.recent-grant-item:hover {
         font-size: 10px;
     }
     
+    /* 日本地図 - スマホ対応強化 */
+    .japan-map-container {
+        margin-bottom: 25px;
+        overflow: hidden;
+        width: 100%;
+        position: relative;
+    }
+    
+    .map-title {
+        font-size: 15px;
+        margin-bottom: 15px;
+        text-align: center;
+    }
+    
+    .japan-map-svg {
+        width: 100%;
+        height: auto;
+        max-height: 400px;
+        min-height: 320px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        background: #f8f9fa;
+        overflow: visible;
+        display: block;
+        margin: 0 auto;
+        aspect-ratio: 600 / 750;
+    }
+    
+    /* SVG内のテキストサイズ調整 */
+    .region-label {
+        font-size: 11px !important;
+        font-weight: 700;
+    }
+    
+    .region-count {
+        font-size: 9px !important;
+        font-weight: 600;
+    }
+    
+    /* 地域ボタン - スマホ最適化 */
+    .region-buttons {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-top: 20px;
+    }
+    
+    .region-button {
+        padding: 12px 8px;
+        font-size: 12px;
+        min-height: 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .region-button .region-name {
+        font-size: 13px;
+        margin-bottom: 2px;
+    }
+    
+    .region-button .region-count {
+        font-size: 10px;
+    }
+    
+    /* 人気の都道府県 */
+    .popular-prefectures {
+        margin-top: 20px;
+        padding: 15px;
+    }
+    
+    .popular-title {
+        font-size: 13px;
+        margin-bottom: 10px;
+    }
+    
+    .popular-list {
+        gap: 6px;
+    }
+    
+    .popular-item {
+        padding: 6px 12px;
+        font-size: 11px;
+    }
+    
     .cta-section {
         padding: 30px 15px;
         margin-top: 30px;
@@ -1672,10 +1792,52 @@ a.recent-grant-item:hover {
         gap: 20px;
     }
     
-    .all-prefectures-container,
+    .all-prefectures-container {
+        padding: 15px;
+        max-height: 300px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 15px;
+    }
+    
     .main-regions-container {
-        padding: 20px;
-        max-height: 400px;
+        padding: 15px;
+        border-radius: 15px;
+    }
+    
+    .prefecture-list-title,
+    .regions-title {
+        font-size: 16px;
+        margin-bottom: 15px;
+    }
+    
+    /* スクロール最適化 */
+    .all-prefectures-container::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .all-prefectures-container::-webkit-scrollbar-track {
+        background: #f0f0f0;
+        border-radius: 8px;
+    }
+    
+    .all-prefectures-container::-webkit-scrollbar-thumb {
+        background: #000000;
+        border-radius: 8px;
+    }
+    
+    /* タッチデバイス対応 */
+    .map-region,
+    .region-button,
+    .prefecture-item {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    .map-region:active,
+    .region-button:active,
+    .prefecture-item:active {
+        opacity: 0.7;
     }
 }
 </style>
@@ -1699,6 +1861,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // ページ読み込み時に地域件数を更新
     updateRegionCounts();
+    
+    // モバイルデバイス向けの日本地図最適化
+    function optimizeMapForMobile() {
+        const mapSvg = document.querySelector('.japan-map-svg');
+        const isMobile = window.innerWidth <= 640;
+        
+        if (mapSvg && isMobile) {
+            // SVGの高さを調整
+            mapSvg.style.maxHeight = '350px';
+            
+            // モバイルでのタッチ操作を改善
+            mapSvg.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+            });
+        }
+    }
+    
+    // 初期化とリサイズ時の最適化
+    optimizeMapForMobile();
+    window.addEventListener('resize', optimizeMapForMobile);
     
     // カウンターアニメーション
     const observerOptions = {
@@ -2043,6 +2225,23 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    
+    // モバイルでのパフォーマンス最適化
+    if (window.innerWidth <= 640) {
+        // 都道府県コンテナのスクロール性能改善
+        const prefectureContainer = document.querySelector('.all-prefectures-container');
+        if (prefectureContainer) {
+            prefectureContainer.style.webkitOverflowScrolling = 'touch';
+            prefectureContainer.style.overflowScrolling = 'touch';
+        }
+        
+        // 地域セクションのスクロール最適化
+        const regionSection = document.querySelector('.region-section');
+        if (regionSection) {
+            regionSection.style.transform = 'translateZ(0)';
+            regionSection.style.willChange = 'transform';
+        }
+    }
     
     console.log('Monochrome Categories Section initialized successfully');
 });
